@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+
+# Environment
+.env
+
+# Notebooks
+notebooks/
+
+# Document test files
+documents/
