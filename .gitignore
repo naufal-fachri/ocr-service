@@ -17,3 +17,6 @@ notebooks/
 
 # Document test files
 documents/
+
+# OCR Results
+ocr_results
