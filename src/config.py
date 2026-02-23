@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file="/app/.env", extra="ignore", env_file_encoding="utf-8"
+        env_file="/home/naufal/ocr_service/.env", extra="ignore", env_file_encoding="utf-8"
     )
 
     # --- OCR Engine Configuration ---
@@ -41,11 +41,14 @@ class Settings(BaseSettings):
         description="Configuration for post-processing OCR results"
     )
     SET_IMG_SIZE_CONSTANT: bool = Field(
-        default=True,
+        default=False,
         description="Make every page has the same dimension before OCR"
     )
 
     # --- Redis Configuration ---
+    REDIS_HOST: str = Field(
+        description="Redis Host"
+    )
     REDIS_PORT: int = Field(
         default=6380,
         description="Port number for connecting to the Redis server"
@@ -55,6 +58,9 @@ class Settings(BaseSettings):
     )
 
     # --- RabbitMQ Configuration ---
+    RABBITMQ_HOST: str = Field(
+        description="RabbitMQ Host"
+    )
     RABBITMQ_USERNAME: str = Field(
         description="Username for authenticating with RabbitMQ"
     )

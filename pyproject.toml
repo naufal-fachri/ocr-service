@@ -3,10 +3,24 @@ name = "ocr-service"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
+    "celery>=5.6.2",
     "fastapi[standard]>=0.128.7",
     "loguru>=0.7.3",
     "minio>=7.2.20",
+    "paddleocr>=3.4.0",
+    "paddlepaddle-gpu==3.3.0",
+    "pydantic-settings>=2.12.0",
     "pymupdf>=1.26.7",
+    "python-dotenv>=1.2.1",
+    "redis>=7.1.1",
 ]
+
+[[tool.uv.index]]
+name = "paddle-cu130"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu130/"
+explicit = true
+
+[tool.uv.sources]
+paddlepaddle-gpu = { index = "paddle-cu130" }

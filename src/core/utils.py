@@ -5,6 +5,7 @@ from PIL import Image
 import pymupdf
 import redis
 import os
+import json
 
 from  src.config import settings
 
@@ -12,11 +13,11 @@ from  src.config import settings
 # Redis client for progress tracking
 # ──────────────────────────────────────────────
 
-ROOT_SAVE_DIR = "/home/naufal/ocr_service/ocr_results"
+ROOT_SAVE_DIR = "/app/ocr_results"
 os.makedirs(ROOT_SAVE_DIR, exist_ok=True)
 
 REDIS_CLIENT = redis.Redis(
-    host="localhost",
+    host=settings.REDIS_HOST,
     port=settings.REDIS_PORT,
     password=settings.REDIS_PASSWORD,
     db=0,
@@ -28,8 +29,6 @@ MAX_BATCH_SIZE = 16
 DPI = 200
 TARGET_HEIGHT = 2048
 TARGET_WIDTH = 1536
-
-
 
 def resize_image(
     img: Image.Image,
@@ -167,6 +166,17 @@ def _set_stage(file_id: str, state: str, stage: str, message: str, error: str = 
         "error": error,
     })
 
+def _save_result(
+    file_id: str,
+    results: list[dict[str, Any]]
+):
+    key = f"ocr_results:{file_id}"
+    REDIS_CLIENT.set(
+        key,
+        json.dumps(results),
+        ex=300
+    )
+
 
 def get_progress(file_id: str) -> dict[str, Any]:
     """
@@ -209,3 +219,10 @@ def get_progress(file_id: str) -> dict[str, Any]:
         "message": data.get("message", ""),
         "error": data.get("error", ""),
     }
+
+def get_result(file_id: str) -> list[dict[str, Any]] | None:
+    key = f"ocr_results:{file_id}"
+    data = REDIS_CLIENT.get(key)
+    if not data:
+        return None
+    return json.loads(data)

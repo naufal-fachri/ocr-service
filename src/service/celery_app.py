@@ -3,20 +3,22 @@ from celery import Celery
 from kombu import Exchange, Queue
 from src.config import settings
 
+BROKER_HOST = settings.RABBITMQ_HOST
 BROKER_VHOST = settings.RABBITMQ_VHOST
 BROKER_PORT = settings.RABBITMQ_PORT
 BROKER_USER = settings.RABBITMQ_USERNAME
 BROKER_PASSWORD = settings.RABBITMQ_PASSWORD
 
 # Redis configuration
+REDIS_HOST = settings.REDIS_HOST
 REDIS_PORT = settings.REDIS_PORT
 REDIS_PASSWORD = settings.REDIS_PASSWORD
 
-redis_url = f"redis://:{REDIS_PASSWORD}@localhost:{REDIS_PORT}/0"
+redis_url = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0"
 
 app = Celery(
     'ocr_service',
-    broker=f"amqp://{BROKER_USER}:{BROKER_PASSWORD}@localhost:{BROKER_PORT}/{BROKER_VHOST}",
+    broker=f"amqp://{BROKER_USER}:{BROKER_PASSWORD}@{BROKER_HOST}:{BROKER_PORT}/{BROKER_VHOST}",
     backend=redis_url
 )
 

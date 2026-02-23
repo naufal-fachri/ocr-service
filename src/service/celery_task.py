@@ -17,7 +17,7 @@ from src.core.utils import (
     _init_progress,
     _increment_pages,
     _set_stage,
-    get_progress,
+    _save_result,
     ROOT_SAVE_DIR
 )
 
@@ -25,17 +25,15 @@ from src.core.utils import (
 # Singletons (initialised once per worker process)
 # ──────────────────────────────────────────────
 logger.info("Initializing OCR...")
-DEVICE = "gpu"
-PRECISION = "fp16"
 OCR_ENGINE = OCREngine(
-    device=DEVICE,
-    precision=PRECISION,
+    device=settings.OCR_DEVICE,
+    precision=settings.OCR_PRECISION,
     text_detection_model_name=settings.TEXT_DETECTION_MODEL_NAME,
     text_recognition_model_name=settings.TEXT_RECOGNITION_MODEL_NAME,
     use_doc_orientation_classify=settings.USER_DOC_ORIENTATION_CLASSIFY,
     use_doc_unwarping=settings.USER_DOC_UNWARPING,
     use_textline_orientation=settings.USER_TEXTLINE_ORIENTATION,
-    post_processing_config=settings.POST_PROCESSING_CONFIG,
+    post_processing_config=eval(settings.POST_PROCESSING_CONFIG),
 )
 logger.info("✅ OCR Engine initialized.")
 
@@ -177,7 +175,10 @@ def combine_results(
         # Mark as complete
         _set_stage(file_id, "SUCCESS", "done", "OCR extraction completed!")
 
-        # Return structured result that Server 1 expects
+        # Save results
+        logger.info("Saving to redis for temporary")
+        _save_result(file_id, sorted_combined_texts)
+
         return {
             "status": True,
             "filename": "",  # process_file passes this via the chain

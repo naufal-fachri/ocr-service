@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.vscode/
+.git/
+.gitignore
+Dockerfile
+docker-compose*.yaml
+notebooks/
+*.log
+ocr_results/
+documents/

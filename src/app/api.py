@@ -1,9 +1,9 @@
-
 import os
 import shutil
 from pathlib import Path
 from tempfile import mkdtemp
 from uuid import uuid4
+import json
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 
 from src.service.celery_app import app as celery_app
-from src.core.utils import get_progress, ROOT_SAVE_DIR
+from src.core.utils import get_progress, get_result, ROOT_SAVE_DIR
 from src.config import settings
 
 app = FastAPI(
@@ -21,13 +21,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# ──────────────────────────────────────────────
-# Temp upload directory for incoming files
-# ──────────────────────────────────────────────
-# TEMP_UPLOAD_DIR = Path(settings.TEMP_UPLOAD_DIR if hasattr(settings, "TEMP_UPLOAD_DIR") else "/home/naufal/ocr_service/temp")
-# TEMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 SET_IMG_SIZE_CONSTANT = settings.SET_IMG_SIZE_CONSTANT
 
+SHARED_UPLOAD_DIR = Path("/tmp/ocr_uploads")
+SHARED_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # ──────────────────────────────────────────────
 # Schemas
@@ -69,28 +66,15 @@ async def extract_pdf(
     file_id: str = Form(...),
     batch_size: int = Form(default=4),
 ):
-    """
-    Accepts a PDF file, saves it to a temp directory, and dispatches
-    a Celery task for OCR processing.
-
-    Server 1 should:
-    1. Call this endpoint to submit the file
-    2. Poll GET /ocr/progress/{file_id} for progress updates
-    3. Once state=SUCCESS, call GET /ocr/result/{file_id} for the result
-       OR read the Celery task result directly via AsyncResult
-    """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only PDF files are supported",
         )
 
-    # Create a temp directory for this file
-    temp_dir_spawn = Path(mkdtemp())
-    file_temp_dir = temp_dir_spawn / file_id
+    file_temp_dir = SHARED_UPLOAD_DIR / file_id
     file_temp_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save uploaded file to disk
     file_path = file_temp_dir / file.filename
     try:
         content = await file.read()
@@ -117,9 +101,8 @@ async def extract_pdf(
     finally:
         await file.close()
 
-    # Dispatch Celery task
     task = celery_app.send_task(
-        'task.process_file',  # Updated task name with prefix
+        'task.process_file',
         kwargs={
             "file_path": str(file_path),
             "filename": file.filename,
@@ -127,9 +110,9 @@ async def extract_pdf(
             "batch_size": batch_size,
             "set_img_size_constant": SET_IMG_SIZE_CONSTANT
         },
-        queue='process_file',  # Route to case_analysis queue (Priority 10)
+        queue='process_file',
         task_id=f"ocr-{file_id}"
-        )
+    )
 
     logger.info(f"🚀 Dispatched Celery task {task.id} for file_id={file_id}")
 
@@ -149,10 +132,6 @@ async def extract_pdf(
     summary="Get OCR progress for a file",
 )
 async def ocr_progress(file_id: str):
-    """
-    Returns the current OCR progress from Redis.
-    Server 1 polls this endpoint while streaming SSE to the client.
-    """
     progress = get_progress(file_id)
     return ProgressResponse(**progress)
 
@@ -162,19 +141,18 @@ async def ocr_progress(file_id: str):
 # ──────────────────────────────────────────────
 @app.get(
     "/ocr/result/{file_id}",
+    response_model=ResultResponse,
     summary="Get final OCR result for a file",
 )
 async def ocr_result(file_id: str):
     """
-    Returns the final combined OCR result.
+    Returns the final combined OCR result from Redis.
     Only call this after progress shows state=SUCCESS.
-
-    Reads from the saved JSON file on disk (written by combine_results task).
     """
-    result_path = Path(ROOT_SAVE_DIR) / file_id / "combined_ocr_result.json"
+    pages = get_result(file_id)
 
-    if not result_path.exists():
-        # Check if task is still running
+    if pages is None:
+        # Result not in Redis yet — check why
         progress = get_progress(file_id)
         if progress["state"] in ("PENDING", "PROCESSING", "COMBINING"):
             raise HTTPException(
@@ -189,12 +167,8 @@ async def ocr_result(file_id: str):
         else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Result not found",
+                detail="Result not found. It may have expired or never completed.",
             )
-
-    import json
-    with open(result_path, "r", encoding="utf-8") as f:
-        pages = json.load(f)
 
     return ResultResponse(
         status=True,
@@ -215,13 +189,11 @@ async def cleanup(file_id: str):
     """Remove temp upload and result files after Server 1 is done."""
     cleaned = []
 
-    # Clean temp upload
-    temp_dir = TEMP_UPLOAD_DIR / file_id
+    temp_dir = SHARED_UPLOAD_DIR / file_id
     if temp_dir.exists():
         shutil.rmtree(temp_dir)
         cleaned.append("temp_upload")
 
-    # Clean saved results
     result_dir = Path(ROOT_SAVE_DIR) / file_id
     if result_dir.exists():
         shutil.rmtree(result_dir)
