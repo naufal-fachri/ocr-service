@@ -33,7 +33,7 @@ OCR_ENGINE = OCREngine(
     use_doc_orientation_classify=settings.USER_DOC_ORIENTATION_CLASSIFY,
     use_doc_unwarping=settings.USER_DOC_UNWARPING,
     use_textline_orientation=settings.USER_TEXTLINE_ORIENTATION,
-    post_processing_config=eval(settings.POST_PROCESSING_CONFIG),
+    post_processing_config=settings.POST_PROCESSING_CONFIG,
 )
 logger.info("✅ OCR Engine initialized.")
 

@@ -1,5 +1,4 @@
 FROM python:3.12-slim-bookworm
-
 WORKDIR /app
 
 # System dependencies for PyMuPDF and OpenCV
