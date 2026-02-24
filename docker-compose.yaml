@@ -8,14 +8,13 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ocr_results:/app/ocr_results
+      - ${PWD}/ocr_results:/app/ocr_results
       - shared_tmp:/tmp/ocr_uploads
     command: >
       uv run uvicorn src.app.api:app
       --host 0.0.0.0
       --port 8000
     restart: unless-stopped
-
   worker:
     build: .
     container_name: ocr_worker
@@ -23,7 +22,7 @@ services:
       - "host.docker.internal:host-gateway"
     env_file: .env
     volumes:
-      - ocr_results:/app/ocr_results
+      - ${PWD}/ocr_results:/app/ocr_results
       - shared_tmp:/tmp/ocr_uploads
     deploy:
       resources:
@@ -40,7 +39,5 @@ services:
       --pool=threads
       --queues=process_file,ocr_file,combine_results
     restart: unless-stopped
-
 volumes:
-  ocr_results:
   shared_tmp:
