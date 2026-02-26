@@ -19,7 +19,7 @@ A high-performance PDF OCR extraction service built with FastAPI, Celery, and Pa
    └──────────┘              └──────────────┘
 ```
 
-The API server receives PDF uploads and dispatches tasks to the Celery worker via Redis. The worker processes pages in parallel batches using PaddleOCR (GPU-accelerated), stores results, and updates progress in Redis. Temp files are shared between containers via a shared volume.
+The API server receives PDF uploads and dispatches tasks to the Celery workers via Redis. The OCR worker processes pages in parallel batches using PaddleOCR (GPU-accelerated), while a separate coordinator worker handles file ingestion and result combining. Results are stored on disk and progress is tracked in Redis. Temp files are shared between containers via a shared volume.
 
 ---
 
@@ -290,16 +290,24 @@ Service health check.
 | Service | Container | Port | Description |
 |---------|-----------|------|-------------|
 | `api` | `ocr_service` | `8001:8000` | FastAPI HTTP server |
-| `worker` | `ocr_worker` | — | Celery worker (GPU-enabled) |
+| `worker` | `ocr_worker` | — | Celery OCR worker (GPU-enabled, concurrency: 2) |
+| `worker_coordinator` | `ocr_coordinator` | — | Celery coordinator worker (CPU, concurrency: 4) |
+
+The worker architecture is split into two specialized workers:
+
+- **`worker`** — Handles the `ocr_file` queue. Runs with GPU access and `--concurrency=2` for parallel OCR batch processing via PaddleOCR.
+- **`worker_coordinator`** — Handles the `process_file` and `combine_results` queues. Runs CPU-only with `--concurrency=4` for file ingestion, page splitting, and result merging.
+
+This separation ensures GPU resources are dedicated to OCR inference while coordination tasks run independently without competing for GPU memory.
 
 **Shared Volumes:**
 - `${PWD}/ocr_results` — Persistent OCR output files (bind mount)
-- `shared_tmp` — Temporary PDF uploads shared between API and worker
+- `shared_tmp` — Temporary PDF uploads shared between API and workers
 
 **Celery Queues:**
-- `process_file` — Initial file ingestion and splitting
-- `ocr_file` — Per-batch OCR processing
-- `combine_results` — Merging batch results
+- `process_file` — Initial file ingestion and splitting (handled by `worker_coordinator`)
+- `ocr_file` — Per-batch OCR processing (handled by `worker`)
+- `combine_results` — Merging batch results (handled by `worker_coordinator`)
 
 ---
 
@@ -337,13 +345,21 @@ uv sync
 # Start the API
 uv run uvicorn src.app.api:app --host 0.0.0.0 --port 8000 --reload
 
-# Start the worker (in another terminal)
+# Start the OCR worker (in another terminal)
 uv run celery -A src.service.celery_app worker \
   --loglevel=info \
-  --hostname=worker_extract@%h \
-  --concurrency=1 \
+  --hostname=worker_ocr@%h \
+  --concurrency=2 \
   --pool=threads \
-  --queues=process_file,ocr_file,combine_results
+  --queues=ocr_file
+
+# Start the coordinator worker (in another terminal)
+uv run celery -A src.service.celery_app worker \
+  --loglevel=info \
+  --hostname=worker_coord@%h \
+  --concurrency=4 \
+  --pool=threads \
+  --queues=process_file,combine_results
 ```
 
 ### Viewing Logs
@@ -352,8 +368,11 @@ uv run celery -A src.service.celery_app worker \
 # API logs
 docker logs ocr_service -f
 
-# Worker logs
+# OCR worker logs
 docker logs ocr_worker -f
+
+# Coordinator worker logs
+docker logs ocr_coordinator -f
 ```
 
 ---
@@ -361,6 +380,7 @@ docker logs ocr_worker -f
 ## 📝 Notes
 
 - Results are stored in Redis with a TTL — retrieve them promptly after completion.
-- The worker uses `--concurrency=1` with thread pool to prevent GPU memory conflicts.
+- The OCR worker uses `--concurrency=2` with thread pool to balance GPU utilization and memory usage.
+- The coordinator worker uses `--concurrency=4` for lightweight file processing and result combining tasks.
 - Batch size (`batch_size`) can be tuned based on GPU VRAM — larger batches are faster but use more memory.
 - Always call `DELETE /ocr/cleanup/{file_id}` after consuming results to free disk space.
