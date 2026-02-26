@@ -15,6 +15,7 @@ services:
       --host 0.0.0.0
       --port 8000
     restart: unless-stopped
+
   worker:
     build: .
     container_name: ocr_worker
@@ -34,10 +35,29 @@ services:
     command: >
       uv run celery -A src.service.celery_app worker
       --loglevel=info
-      --hostname=worker_extract@%h
-      --concurrency=1
+      --hostname=worker_ocr@%h
+      --concurrency=2
       --pool=threads
-      --queues=process_file,ocr_file,combine_results
+      --queues=ocr_file
     restart: unless-stopped
+
+  worker_coordinator:
+    build: .
+    container_name: ocr_coordinator
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    volumes:
+      - ${PWD}/ocr_results:/app/ocr_results
+      - shared_tmp:/tmp/ocr_uploads
+    command: >
+      uv run celery -A src.service.celery_app worker
+      --loglevel=info
+      --hostname=worker_coord@%h
+      --concurrency=4
+      --pool=threads
+      --queues=process_file,combine_results
+    restart: unless-stopped
+
 volumes:
   shared_tmp:
