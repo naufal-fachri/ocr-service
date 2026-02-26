@@ -1,10 +1,8 @@
-import pymupdf
 import numpy as np
 import re
 import PIL
 import paddle
 import gc
-from pathlib import Path
 from paddleocr import PaddleOCR
 from typing import Union, Any
 from loguru import logger

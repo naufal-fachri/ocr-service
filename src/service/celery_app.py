@@ -26,6 +26,7 @@ default_exchange = Exchange('celery_tasks', type='direct', durable=True)
 
 app.conf.imports = ['src.service.celery_task']
 app.conf.worker_max_tasks_per_child = 50
+app.conf.result_expires = 3600
 
 app.conf.task_queues = (
     Queue('process_file', default_exchange, routing_key='process_file', queue_arguments={'x-queue-type': 'quorum'}),
